@@ -41,21 +41,21 @@ define(['N/email', 'N/record', "N/log", 'N/runtime', 'N/search', 'N/url', './cry
                 title: 'script request',
                 details: scriptContext.request
             });
-            try{
+            try {
                 var temp = hmacSha256(scriptContext.request.body, wpSecret);
                 var result = crypto.enc.Base64.stringify(temp);
                 var passedFlag = result == scriptContext.request.headers['X-WC-Webhook-Signature'];
-            }catch(e){
-                log.debug({
+            } catch (e) {
+                log.error({
                     title: 'error signature',
                     details: e
                 });
-                var passedFlag=false;
+                var passedFlag = false;
             }
 
 
             if (!passedFlag) {
-                log.debug({
+                log.error({
                     title: 'error signature',
                     details: `compare: ${test} => ${result} signature: ${scriptContext.request.headers['X-WC-Webhook-Signature']}`
                 });
@@ -65,69 +65,77 @@ define(['N/email', 'N/record', "N/log", 'N/runtime', 'N/search', 'N/url', './cry
                 }
             }
 
-
-            var wordpressID = parsedBody.id;
-            var discount = parsedBody.discount_total;
-            var lineItems = parsedBody.line_items;
-            var shippingMethod = parsedBody.shipping_lines;
-            var metaData = parsedBody.meta_data;
-            var vatNum = undefined;
-            var billingMOL = undefined;
-            for (let obj = 0; obj < metaData.length; obj++) {
-                if (metaData[obj].key == 'vat_num') {
-                    vatNum = metaData[obj].value
-                }
-                if (metaData[obj].key == '_billing_mol') {
-                    billingMOL = metaData[obj].value
-                }
-
-            }
-
-            var billingInfo;
-            if (shippingMethod[0].method_title != 'Спиди') {
-
-                billingInfo = parsedBody.billing;
-            } else {
-                billingInfo = parsedBody.shipping;
-            }
-
-            log.debug({
-                title: 'shipping method',
-                details: parsedBody.shipping_lines
-            });
-            log.debug({
-                title: 'billing info',
-                details: billingInfo
-            });
-            log.debug({
-                title: 'shipping info',
-                details: parsedBody.shipping
-            });
-            var name = billingInfo.first_name + ' ' + billingInfo.last_name;
-            var email = parsedBody.billing.email;
-            var phone = parsedBody.billing.phone;
-            var company = billingInfo.company;
-            var invoiceInfo = email;
-            var address = `тел. ном.: ${phone}; Адрес: ${billingInfo.address_1} ; №: ${billingInfo.address_2} ;град: ${billingInfo.city} ;пощ. код: ${billingInfo.postcode}`;
-            if (company != '') {
-                invoiceInfo += `
-                компания: ${company} ; `
-            };
-            if (vatNum != undefined) {
-                invoiceInfo += `
-                ДДС №: ${vatNum} ;`
-            };
-            if (billingMOL != undefined) {
-                invoiceInfo += `
-                МОЛ: ${billingMOL} ;`
-            };
             try {
-                createSO();
-            }
-            catch (e) {
+
+
+                var wordpressID = parsedBody.id;
+                var lineItems = parsedBody.line_items;
+                var shippingMethod = parsedBody.shipping_lines;
+                var metaData = parsedBody.meta_data;
+                var vatNum = undefined;
+                var billingMOL = undefined;
+                for (let obj = 0; obj < metaData.length; obj++) {
+                    if (metaData[obj].key == 'vat_num') {
+                        vatNum = metaData[obj].value
+                    }
+                    if (metaData[obj].key == '_billing_mol') {
+                        billingMOL = metaData[obj].value
+                    }
+
+                }
+
+                var billingInfo;
+                if (shippingMethod[0].method_title != 'Спиди') {
+
+                    billingInfo = parsedBody.billing;
+                } else {
+                    billingInfo = parsedBody.shipping;
+                }
+
                 log.debug({
+                    title: 'shipping method',
+                    details: parsedBody.shipping_lines
+                });
+                log.debug({
+                    title: 'billing info',
+                    details: billingInfo
+                });
+                log.debug({
+                    title: 'shipping info',
+                    details: parsedBody.shipping
+                });
+                var name = billingInfo.first_name + ' ' + billingInfo.last_name;
+                var email = parsedBody.billing.email;
+                var phone = parsedBody.billing.phone;
+                var company = billingInfo.company;
+                var invoiceInfo = email;
+                var address = `тел. ном.: ${phone}; Адрес: ${billingInfo.address_1} ; №: ${billingInfo.address_2} ;град: ${billingInfo.city} ;пощ. код: ${billingInfo.postcode}`;
+                if (company != '') {
+                    invoiceInfo += `
+                компания: ${company} ; `
+                };
+                if (vatNum != undefined) {
+                    invoiceInfo += `
+                ДДС №: ${vatNum} ;`
+                };
+                if (billingMOL != undefined) {
+                    invoiceInfo += `
+                МОЛ: ${billingMOL} ;`
+                };
+
+                createSO();
+
+            } catch (e) {
+                log.error({
                     title: 'try to create a SO',
                     details: e
+                });
+                emailModule.send({
+                    author: 8,
+                    recipients: "innovations@aquatec-bg.com",
+                    subject: 'Неуспешно създаване на SO от WordPress',
+                    body: `WordPress ID: ${wordpressID}
+                    Error: ${e}`,
                 });
                 return;
             }
@@ -170,7 +178,7 @@ define(['N/email', 'N/record', "N/log", 'N/runtime', 'N/search', 'N/url', './cry
                 for (let i = 0; i < lineItems.length; i++) {
                     var itemSku = lineItems[i].sku;
                     var qty = lineItems[i].quantity;
-                    var price= lineItems[i].price;
+                    var price = lineItems[i].price;
 
                     var searchItemID = search.create({
                         type: 'item',
@@ -226,7 +234,7 @@ define(['N/email', 'N/record', "N/log", 'N/runtime', 'N/search', 'N/url', './cry
                     newSO.setCurrentSublistValue({
                         sublistId: 'item',
                         fieldId: 'rate',
-                        value: Number(price)/1.2,
+                        value: Number(price) / 1.2,
                         ignoreFieldChange: false
 
                     });
